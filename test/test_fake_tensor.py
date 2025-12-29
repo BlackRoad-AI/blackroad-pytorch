@@ -1379,6 +1379,37 @@ class FakeTensorConverterTest(TestCase):
         assert mode_weak() is None
         assert y_weak() is None
 
+    def test_cross_mode_fake_tensor_transfer(self):
+        mode1 = FakeTensorMode()
+        with mode1:
+            x = torch.randn(3, 4)
+        self.assertTrue(isinstance(x, FakeTensor))
+        self.assertIs(x.fake_mode, mode1)
+
+        mode2 = FakeTensorMode()
+        x_transferred = mode2.fake_tensor_converter.from_real_tensor(mode2, x)
+
+        self.assertTrue(isinstance(x_transferred, FakeTensor))
+        self.assertIs(x_transferred.fake_mode, mode2)
+        self.assertEqual(x_transferred.shape, x.shape)
+        self.assertEqual(x_transferred.dtype, x.dtype)
+
+    def test_cross_mode_wrapper_subclass_transfer(self):
+        from torch.testing._internal.two_tensor import TwoTensor
+
+        mode1 = FakeTensorMode()
+        with mode1:
+            a = torch.randn(2, 3)
+            b = torch.randn(2, 3)
+        two_tensor = TwoTensor(a, b)
+
+        mode2 = FakeTensorMode()
+        transferred = mode2.fake_tensor_converter.from_real_tensor(mode2, two_tensor)
+
+        self.assertTrue(isinstance(transferred, TwoTensor))
+        self.assertIs(transferred.a.fake_mode, mode2)
+        self.assertIs(transferred.b.fake_mode, mode2)
+
 
 make_propagate_real_tensors_cls(FakeTensorConverterTest)
 

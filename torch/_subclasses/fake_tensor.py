@@ -365,6 +365,48 @@ class FakeTensorConverter:
         symbolic_context: Optional[SymbolicContext] = None,
         trace: bool = True,
     ) -> FakeTensor:
+        # Handle FakeTensors from a different FakeTensorMode, but only if they
+        # don't have symbolic shapes. Symbolic shapes are tied to a specific
+        # ShapeEnv and cannot be safely transferred between modes.
+        # TODO: Support cloning ShapeEnv to enable cross-mode transfer of
+        # tensors with symbolic shapes.
+        if (
+            isinstance(t, FakeTensor)
+            and t.fake_mode is not fake_mode
+            and not t._has_symbolic_sizes_strides
+        ):
+            with in_kernel_invocation_manager(t.fake_mode):
+                new_fake = self.from_meta_and_device(fake_mode, t, t.fake_device)
+            self.set_tensor_memo(t, new_fake)
+            return new_fake
+
+        if is_traceable_wrapper_subclass(t):
+            inner_fake_mode = maybe_get_fake_mode(t)
+            # Only handle cross-mode transfer for subclasses without symbolic shapes
+            if (
+                inner_fake_mode is not None
+                and inner_fake_mode is not fake_mode
+                and not t._has_symbolic_sizes_strides
+            ):
+                inner_tensor_names, ctx = t.__tensor_flatten__()
+                new_inner_tensors = {
+                    name: self.from_real_tensor(
+                        fake_mode,
+                        getattr(t, name),
+                        make_constant=make_constant,
+                        shape_env=shape_env,
+                        source=source,
+                        symbolic_context=symbolic_context,
+                        trace=trace,
+                    )
+                    for name in inner_tensor_names
+                }
+                out = type(t).__tensor_unflatten__(  # type: ignore[attr-defined]
+                    new_inner_tensors, ctx, t.size(), t.stride()
+                )
+                self.set_tensor_memo(t, out)
+                return out
+
         # see note [Tensor Fakification and Symbol Caching]
         if not symbolic_context and not source and shape_env:
             if tracing_context := torch._guards.TracingContext.try_get():
