@@ -420,6 +420,7 @@ class FakeTensorConverter:
             source=source,
             symbolic_context=symbolic_context,
             trace=trace,
+            fake_mode=fake_mode,
         )
         if out is NotImplemented:
             raise UnsupportedFakeTensorException("meta converter nyi")
