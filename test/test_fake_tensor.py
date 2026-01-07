@@ -1412,6 +1412,57 @@ class FakeTensorConverterTest(TestCase):
         assert mode_weak() is None
         assert y_weak() is None
 
+    def test_swap_tensors_preserves_describer_identity(self):
+        """
+        Test swap_tensors behavior with MetaTensorDescriber.
+
+        MetaTensorDescriber uses WeakIdKeyDictionary (with WeakIdRef) to track
+        tensor IDs. Since WeakIdRef uses id() for identity and swap_tensors
+        preserves Python object identity:
+        - get_tensor_id() returns the SAME ID (based on Python object identity)
+        - describe_tensor() returns DIFFERENT properties (shape changed)
+        """
+        from torch._subclasses.meta_utils import MetaTensorDescriber
+
+        # Create two tensors with different shapes
+        A = torch.randn(2, 3)
+        B = torch.randn(4, 5)
+
+        # Create a describer and get tensor ID and description for A
+        describer = MetaTensorDescriber()
+        id_A_before = describer.get_tensor_id(A)
+        desc_A_before = describer.describe_tensor(A)
+
+        # Verify A is in the lookup and has original shape
+        self.assertIn(A, describer.lookup_tensor)
+        self.assertEqual(desc_A_before.size, (2, 3))
+
+        # Swap A and B - A now has B's data, but same Python identity
+        torch.utils.swap_tensors(A, B)
+
+        # Verify A's shape changed (has B's original shape)
+        self.assertEqual(A.shape, torch.Size([4, 5]))
+
+        # Get tensor ID for A again - should be SAME because id(A) is preserved
+        id_A_after = describer.get_tensor_id(A)
+
+        # The tensor ID is the same (based on Python object identity)
+        self.assertEqual(
+            id_A_before,
+            id_A_after,
+            "Tensor ID should be preserved after swap_tensors because "
+            "WeakIdRef uses id() which doesn't change during swap",
+        )
+
+        # BUT the tensor description is DIFFERENT (reflects new shape)
+        desc_A_after = describer.describe_tensor(A)
+        self.assertEqual(desc_A_after.size, (4, 5))
+        self.assertNotEqual(
+            desc_A_before.size,
+            desc_A_after.size,
+            "Tensor description should reflect the new shape after swap",
+        )
+
 
 make_propagate_real_tensors_cls(FakeTensorConverterTest)
 
