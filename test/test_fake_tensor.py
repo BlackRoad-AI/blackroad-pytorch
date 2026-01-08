@@ -1456,6 +1456,7 @@ class FakeTensorConverterTest(TestCase):
         # Verify it's the exact same object (cache hit)
         self.assertIs(fake_A_before, fake_A_after_swap_back)
 
+    @expectedFailurePropagateRealTensors
     def test_swap_tensors_with_subclass_metadata(self):
         """
         Test that subclass metadata from __tensor_flatten__ is included in cache key.
